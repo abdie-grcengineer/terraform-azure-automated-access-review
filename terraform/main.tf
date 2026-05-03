@@ -36,6 +36,10 @@ terraform {
       source  = "hashicorp/archive"
       version = "~> 2.4"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 }
 
@@ -55,11 +59,6 @@ provider "azuread" {
 # Pull metadata about the current subscription. Used in role assignment scopes
 # and for the function's runtime environment variables.
 data "azurerm_subscription" "current" {}
-
-# Pull metadata about the currently-authenticated principal (the SP in CI, or
-# the user running az login locally). Used to grant ourselves Key Vault access
-# during deploys so we can write secrets.
-data "azurerm_client_config" "current" {}
 
 # Create the resource group that contains every resource we deploy.
 # In Azure, resource groups are containers that group related resources for

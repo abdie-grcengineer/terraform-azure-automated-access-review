@@ -77,15 +77,6 @@ variable "name_prefix" {
   default     = "azure-access-review"
 }
 
-# Force-destroy the report storage on terraform destroy even with blobs present.
-# Set to true for the demo so 'terraform destroy' works without manual cleanup.
-# In production this should be false; you don't want destroy to delete audit evidence.
-variable "report_storage_force_destroy" {
-  description = "Allow terraform destroy to delete the report storage even if non-empty"
-  type        = bool
-  default     = true
-}
-
 variable "report_retention_days" {
   description = "Number of days to retain CSV reports before lifecycle deletes them"
   type        = number
