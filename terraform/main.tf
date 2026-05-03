@@ -44,10 +44,17 @@ terraform {
 }
 
 # Configure the Azure provider.
-# The features {} block is required (it can be empty); it configures provider
-# behavior for resource lifecycle scenarios. We use defaults.
+# The features {} block is required; it configures provider lifecycle behavior.
 provider "azurerm" {
-  features {}
+  features {
+    resource_group {
+      # Allow Terraform to destroy a resource group even if it contains
+      # resources Terraform doesn't track. This recovers cleanly from partial
+      # deploys where state and reality diverged. For a tightly-controlled
+      # production environment you'd leave this true and clean up manually.
+      prevent_deletion_if_contains_resources = false
+    }
+  }
   subscription_id = var.subscription_id
   tenant_id       = var.tenant_id
 }
