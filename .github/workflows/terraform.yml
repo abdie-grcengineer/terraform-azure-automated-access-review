@@ -70,10 +70,14 @@ jobs:
           tflint --recursive
 
       - name: Terraform Init
-        # azurerm backend with use_azuread_auth picks up the OIDC-issued token
-        # automatically; no separate auth step needed for the state backend.
+        # azurerm backend with use_azuread_auth picks up the OIDC-issued token,
+        # but the Terraform azurerm provider also needs the tenant/client/sub
+        # IDs to build its config, even at init time.
         env:
-          ARM_USE_OIDC: "true"
+          ARM_USE_OIDC:        "true"
+          ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: terraform init
 
       - name: Terraform Plan
