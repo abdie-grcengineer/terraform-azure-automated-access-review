@@ -34,6 +34,13 @@ resource "azurerm_storage_account" "function_internal" {
   min_tls_version                 = "TLS1_2"
   allow_nested_items_to_be_public = false
 
+  # Versioning is required by our OPA storage_encryption policy. Even on this
+  # internal storage account, applying the same control consistently keeps the
+  # gate honest and avoids carving out exceptions.
+  blob_properties {
+    versioning_enabled = true
+  }
+
   tags = local.common_tags
 }
 
