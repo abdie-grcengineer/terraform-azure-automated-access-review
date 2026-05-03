@@ -2,79 +2,62 @@
 # Required variables (no default) must be supplied via terraform.tfvars
 # or via TF_VAR_<name> environment variables (which is how CI passes secrets).
 
-# The Azure subscription ID where everything gets deployed.
-# In Azure, every resource lives in exactly one subscription; the subscription
-# is the resource container and billing boundary.
 variable "subscription_id" {
   description = "Azure subscription ID where all resources will be created"
   type        = string
 }
 
-# The Azure tenant ID (Microsoft Entra ID directory).
-# A tenant can host many subscriptions; the tenant ID is required by some
-# Azure services (Key Vault, OpenAI) for identity federation.
 variable "tenant_id" {
   description = "Microsoft Entra ID tenant ID"
   type        = string
 }
 
-# The recipient email for the report.
-# In CI, this comes from the RECIPIENT_EMAIL GitHub secret via TF_VAR_recipient_email.
-# Locally, set it in terraform.tfvars (which is gitignored).
 variable "recipient_email" {
   description = "Email address that receives the access review report"
   type        = string
 }
 
-# Default Azure location (region) for resources.
-# eastus is chosen because Azure OpenAI and Communication Services Email are
-# both available there. Many Azure features are region-gated; eastus is the
-# most feature-complete region in the US.
+# Default Azure location.
+# eastus2 is the default because Container Apps and Azure OpenAI are both
+# available with default quota allocations on new subscriptions.
 variable "location" {
   description = "Azure location (region) for resources"
   type        = string
-  # eastus2 is chosen because Functions Consumption quota and Azure OpenAI
-  # gpt-4o-mini are commonly available there even on new subscriptions.
-  # eastus is the historical default but new subs often have 0 quota for
-  # Dynamic VMs (Functions Consumption) in eastus.
-  default = "eastus2"
+  default     = "eastus2"
 }
 
-# NCRONTAB schedule for the Timer trigger.
-# Format: {second} {minute} {hour} {day} {month} {day-of-week}.
-# "0 0 8 1 * *" = 08:00:00 on the 1st of every month, any day-of-week.
-# This is Azure Functions' specific cron format (6 fields, includes seconds).
-variable "schedule_ncrontab" {
-  description = "NCRONTAB expression for the Timer trigger schedule"
+# Standard cron schedule for the Container App Job.
+# Container Apps Jobs use standard 5-field cron (no seconds field).
+# "0 8 1 * *" = at 08:00 on the 1st of every month.
+variable "schedule_cron" {
+  description = "Cron expression for the Container App Job schedule"
   type        = string
-  default     = "0 0 8 1 * *"
+  default     = "0 8 1 * *"
 }
 
-# Azure OpenAI model deployment name.
-# This is the deployment name we create on the OpenAI resource; the function
-# code passes this string to the OpenAI client as the model parameter.
+# Azure OpenAI deployment name (this is the name we create on the OpenAI account;
+# the application code passes it as the "model" parameter).
 variable "openai_deployment_name" {
-  description = "Azure OpenAI deployment name (must match azurerm_cognitive_deployment.gpt name)"
+  description = "Azure OpenAI deployment name"
   type        = string
-  default     = "gpt-4o-mini"
+  default     = "gpt-4-1-mini"
 }
 
-# The underlying OpenAI model the deployment uses.
-# gpt-4o-mini is the cost-and-speed-optimized tier; right-sized for summarization.
-# Larger models would be 5-10x the cost for marginal quality lift on this workload.
+# Underlying OpenAI model. gpt-4.1-mini is GA and right-sized for summarization.
+# (gpt-4o-mini 2024-07-18 was deprecated 03/31/2026 in some regions.)
 variable "openai_model_name" {
   description = "Underlying Azure OpenAI model"
   type        = string
-  default     = "gpt-4o-mini"
+  default     = "gpt-4.1-mini"
 }
 
 variable "openai_model_version" {
   description = "Version of the underlying OpenAI model"
   type        = string
-  default     = "2024-07-18"
+  default     = "2025-04-14"
 }
 
-# Used to prefix all resource names so they're identifiable in the Azure console.
+# Used to prefix all resource names so they are identifiable in the Azure console.
 variable "name_prefix" {
   description = "Prefix applied to resource names"
   type        = string

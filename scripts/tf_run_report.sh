@@ -1,8 +1,8 @@
 #!/bin/bash
-# Manually trigger the access review function via its HTTP endpoint.
-# The function has both a Timer trigger (for the schedule) and an HTTP trigger
-# (for manual invocation). This script calls the HTTP endpoint with the
-# function's master key for auth.
+# Manually trigger the access review Container App Job.
+# Container App Jobs support on-demand starts via `az containerapp job start`,
+# even when the trigger_type is Schedule. Useful for testing without waiting
+# for the next scheduled run.
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,30 +14,25 @@ if [ ! -d "$TERRAFORM_DIR/.terraform" ]; then
 fi
 
 RG=$(terraform -chdir="$TERRAFORM_DIR" output -raw resource_group 2>/dev/null)
-FUNC=$(terraform -chdir="$TERRAFORM_DIR" output -raw function_name 2>/dev/null)
-HOST=$(terraform -chdir="$TERRAFORM_DIR" output -raw function_default_hostname 2>/dev/null)
+JOB=$(terraform -chdir="$TERRAFORM_DIR" output -raw container_app_job_name 2>/dev/null)
 
-if [ -z "$FUNC" ]; then
-  echo "Error: function_name output not found. Has 'terraform apply' run yet?"
+if [ -z "$JOB" ]; then
+  echo "Error: container_app_job_name output not found. Has 'terraform apply' run yet?"
   exit 1
 fi
 
-echo "Fetching function master key for HTTP invocation..."
-KEY=$(/opt/homebrew/bin/az functionapp keys list \
-  --name "$FUNC" \
-  --resource-group "$RG" \
-  --query "masterKey" -o tsv)
-
-URL="https://${HOST}/api/run?code=${KEY}"
-echo ""
-echo "Invoking: https://${HOST}/api/run"
+echo "Starting Container App Job: $JOB"
 echo ""
 
-curl -fSs -X POST "$URL" \
-  -H "Content-Type: application/json" \
-  -d '{"trigger":"manual","source":"tf_run_report.sh"}'
+/opt/homebrew/bin/az containerapp job start \
+  --name "$JOB" \
+  --resource-group "$RG"
 
 echo ""
+echo "Job execution queued."
 echo ""
-echo "To watch the function logs (live tail):"
-echo "  az webapp log tail --name $FUNC --resource-group $RG"
+echo "To watch the job logs:"
+echo "  az containerapp job execution list --name $JOB --resource-group $RG --query \"[0].{name:name, status:properties.status, started:properties.startTime}\" -o table"
+echo ""
+echo "Or stream the latest execution's logs:"
+echo "  az containerapp job logs show --name $JOB --resource-group $RG --container access-review --follow"

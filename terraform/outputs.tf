@@ -7,14 +7,14 @@ output "resource_group" {
   value       = azurerm_resource_group.main.name
 }
 
-output "function_name" {
-  description = "Name of the Function App (use to invoke or query manually)"
-  value       = azurerm_linux_function_app.access_review.name
+output "container_app_job_name" {
+  description = "Name of the Container App Job (use to invoke or query manually)"
+  value       = azurerm_container_app_job.access_review.name
 }
 
-output "function_default_hostname" {
-  description = "Default hostname of the Function App (HTTPS)"
-  value       = azurerm_linux_function_app.access_review.default_hostname
+output "container_registry" {
+  description = "Container Registry hosting the job image"
+  value       = azurerm_container_registry.main.login_server
 }
 
 output "report_storage_account" {
@@ -33,7 +33,7 @@ output "openai_endpoint" {
 }
 
 output "openai_deployment" {
-  description = "Azure OpenAI deployment name (passed to the OpenAI client as 'model')"
+  description = "Azure OpenAI deployment name"
   value       = azurerm_cognitive_deployment.gpt.name
 }
 
@@ -47,9 +47,9 @@ output "acs_sender_address" {
   value       = "donotreply@${azurerm_email_communication_service_domain.main.from_sender_domain}"
 }
 
-output "function_principal_id" {
-  description = "Object ID of the Function App's managed identity (for IAM debugging)"
-  value       = azurerm_linux_function_app.access_review.identity[0].principal_id
+output "job_principal_id" {
+  description = "Object ID of the job's managed identity (for IAM debugging)"
+  value       = azurerm_user_assigned_identity.job.principal_id
 }
 
 output "subscription_id" {
