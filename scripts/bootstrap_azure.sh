@@ -112,6 +112,18 @@ for ROLE in "Contributor" "User Access Administrator"; do
   echo "  attached: $ROLE"
 done
 
+# Storage Blob Data Owner is required for the azurerm backend with
+# use_azuread_auth = true to read/write the state blob. Contributor alone
+# only grants control-plane access; data-plane requires this separate role.
+echo ""
+echo "=== [7b/8] Grant Storage Blob Data Owner on the state storage account ==="
+az role assignment create \
+  --assignee "$APP_ID" \
+  --role "Storage Blob Data Owner" \
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG_NAME/providers/Microsoft.Storage/storageAccounts/$SA_NAME" \
+  --output none 2>/dev/null || echo "  (Storage Blob Data Owner may already exist)"
+echo "  attached: Storage Blob Data Owner on state storage account"
+
 echo ""
 echo "=== [8/8] Output config ==="
 echo ""

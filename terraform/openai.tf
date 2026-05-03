@@ -37,7 +37,10 @@ resource "azurerm_cognitive_deployment" "gpt" {
   }
 
   sku {
-    name     = "GlobalStandard" # Pay-per-token, cheapest for low-volume use
-    capacity = 10               # Tokens-per-minute capacity (units of 1000)
+    # Standard is regional capacity (vs GlobalStandard which pulls from a
+    # global pool). New subscriptions often have 0 GlobalStandard quota but
+    # default regional Standard quota for popular models like gpt-4o-mini.
+    name     = "Standard"
+    capacity = 10 # Tokens-per-minute capacity (units of 1000)
   }
 }

@@ -156,4 +156,33 @@ the domain. Without that, ACS sends will fail with "no sender domain configured"
 
 ---
 
+## 16. Contributor at sub scope is NOT enough for storage backend with use_azuread_auth
+
+The `azurerm` backend with `use_azuread_auth = true` performs data-plane
+operations (list blobs, lease blobs) against the state container. Azure RBAC
+splits control plane (Owner/Contributor/Reader) from data plane (Storage Blob
+Data Owner/Contributor/Reader). Contributor at subscription scope grants
+control-plane access to manage the storage account, but it does NOT grant
+data-plane access to read or write blobs inside it.
+
+**Symptom:** `terraform init` fails with
+`StatusCode=403 Code="AuthorizationPermissionMismatch"` when listing blobs.
+
+**Fix:**
+- Grant `Storage Blob Data Owner` to the service principal scoped to the state storage account.
+- Run after bootstrap: `az role assignment create --assignee <app-id> --role "Storage Blob Data Owner" --scope <state-sa-resource-id>`.
+- Adding to bootstrap_azure.sh would prevent this entirely on fresh installs.
+
+## 17. ARM_CLIENT_ID and ARM_TENANT_ID env vars need to be set on EVERY terraform step in CI
+
+Setting them on plan only is not enough. The `terraform init` step also needs
+them because the azurerm provider builds its config during init. Without them,
+init fails with `Error building ARM Config: a Tenant ID must be configured`.
+
+**Fix:**
+- Apply the `env:` block with all three ARM_* env vars to every terraform step
+  (init, plan, apply) in the workflow.
+
+---
+
 (Append new lessons here as they come up.)

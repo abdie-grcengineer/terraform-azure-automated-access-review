@@ -33,7 +33,11 @@ variable "recipient_email" {
 variable "location" {
   description = "Azure location (region) for resources"
   type        = string
-  default     = "eastus"
+  # eastus2 is chosen because Functions Consumption quota and Azure OpenAI
+  # gpt-4o-mini are commonly available there even on new subscriptions.
+  # eastus is the historical default but new subs often have 0 quota for
+  # Dynamic VMs (Functions Consumption) in eastus.
+  default = "eastus2"
 }
 
 # NCRONTAB schedule for the Timer trigger.
