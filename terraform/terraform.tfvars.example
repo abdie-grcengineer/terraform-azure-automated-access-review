@@ -1,0 +1,14 @@
+# Copy this file to terraform.tfvars (which is gitignored) and fill in real values.
+# In CI, these values come from GitHub secrets via TF_VAR_<name> env vars.
+
+subscription_id = "00000000-0000-0000-0000-000000000000"
+tenant_id       = "00000000-0000-0000-0000-000000000000"
+recipient_email = "you@example.com"
+
+# Optional overrides (defaults shown):
+# location               = "eastus"
+# schedule_ncrontab      = "0 0 8 1 * *"
+# openai_deployment_name = "gpt-4o-mini"
+# openai_model_name      = "gpt-4o-mini"
+# openai_model_version   = "2024-07-18"
+# name_prefix            = "azure-access-review"

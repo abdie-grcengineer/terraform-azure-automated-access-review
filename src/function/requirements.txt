@@ -1,0 +1,10 @@
+azure-functions
+azure-identity
+azure-mgmt-authorization
+azure-mgmt-monitor
+azure-mgmt-resource
+azure-mgmt-security
+azure-mgmt-subscription
+azure-storage-blob
+azure-communication-email
+openai

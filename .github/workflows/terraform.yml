@@ -1,0 +1,117 @@
+name: Terraform Plan + OPA Policy Gate (Azure)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - "policy/**"
+      - "src/function/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - "policy/**"
+      - "src/function/**"
+      - ".github/workflows/terraform.yml"
+
+permissions:
+  # id-token: write is REQUIRED for federated identity (OIDC).
+  # Without it, GitHub Actions cannot mint the token Azure needs.
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  plan-and-policy-check:
+    name: Plan + Policy Gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Authenticate to Azure via federated identity credentials on the Entra ID app.
+      # GitHub Actions presents an OIDC token; Azure exchanges it for a short-lived
+      # access token. No long-lived credentials anywhere.
+      - name: Authenticate to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.0
+
+      - name: Setup Conftest
+        run: |
+          wget -q https://github.com/open-policy-agent/conftest/releases/download/v0.56.0/conftest_0.56.0_Linux_x86_64.tar.gz
+          tar xzf conftest_0.56.0_Linux_x86_64.tar.gz
+          sudo mv conftest /usr/local/bin/
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.55.1
+
+      - name: TFLint
+        run: |
+          tflint --init
+          tflint --recursive
+
+      - name: Terraform Init
+        # azurerm backend with use_azuread_auth picks up the OIDC-issued token
+        # automatically; no separate auth step needed for the state backend.
+        env:
+          ARM_USE_OIDC: "true"
+        run: terraform init
+
+      - name: Terraform Plan
+        env:
+          ARM_USE_OIDC:           "true"
+          ARM_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID:    ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          # Required variables passed via TF_VAR env vars sourced from secrets.
+          # Without this, terraform plan would prompt interactively and hang.
+          TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          TF_VAR_tenant_id:       ${{ secrets.AZURE_TENANT_ID }}
+          TF_VAR_recipient_email: ${{ secrets.RECIPIENT_EMAIL }}
+        run: |
+          terraform plan -out=tfplan -no-color -input=false
+          terraform show -json tfplan > tfplan.json
+
+      - name: OPA / Conftest Policy Gate
+        run: conftest test --policy ../policy --all-namespaces tfplan.json
+
+      - name: Upload plan artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: |
+            terraform/tfplan
+            terraform/tfplan.json
+          retention-days: 30
+
+      - name: Apply (only on push to main, after gate passes)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          ARM_USE_OIDC:           "true"
+          ARM_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID:    ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          TF_VAR_tenant_id:       ${{ secrets.AZURE_TENANT_ID }}
+          TF_VAR_recipient_email: ${{ secrets.RECIPIENT_EMAIL }}
+        run: terraform apply tfplan
