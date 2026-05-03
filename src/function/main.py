@@ -38,8 +38,9 @@ def main() -> int:
     storage_account   = os.environ["REPORT_STORAGE_ACCOUNT"]
     container         = os.environ["REPORT_CONTAINER"]
     recipient         = os.environ["RECIPIENT_EMAIL"]
-    openai_endpoint   = os.environ["OPENAI_ENDPOINT"]
-    openai_deployment = os.environ["OPENAI_DEPLOYMENT"]
+    # OPENAI vars are optional. If empty, narrative falls back to template summary.
+    openai_endpoint   = os.environ.get("OPENAI_ENDPOINT", "")
+    openai_deployment = os.environ.get("OPENAI_DEPLOYMENT", "")
     acs_endpoint      = os.environ["ACS_ENDPOINT"]
     acs_sender        = os.environ["ACS_SENDER_ADDRESS"]
 

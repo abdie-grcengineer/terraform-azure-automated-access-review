@@ -41,9 +41,7 @@ resource "azurerm_role_assignment" "job_storage_writer" {
   principal_id         = azurerm_user_assigned_identity.job.principal_id
 }
 
-# Permission: invoke Azure OpenAI models.
-resource "azurerm_role_assignment" "job_openai_user" {
-  scope                = azurerm_cognitive_account.openai.id
-  role_definition_name = "Cognitive Services OpenAI User"
-  principal_id         = azurerm_user_assigned_identity.job.principal_id
-}
+# Note: OpenAI role assignment removed because Azure OpenAI deployment is
+# omitted from this stack (subscription has 0 OpenAI quota across all GA
+# models in the available regions). The function's narrative module gracefully
+# falls back to a template summary when no AI endpoint is configured.

@@ -77,13 +77,15 @@ resource "terraform_data" "image_build" {
   }
 
   provisioner "local-exec" {
-    command = <<-EOT
+    # Run from the source dir so 'Dockerfile' resolves correctly without
+    # needing an absolute --file path.
+    working_dir = "${path.module}/../src/function"
+    command     = <<-EOT
       az acr build \
         --registry ${azurerm_container_registry.main.name} \
         --image access-review:latest \
         --image access-review:${substr(self.triggers_replace.src_hash, 0, 12)} \
-        --file Dockerfile \
-        ${path.module}/../src/function
+        .
     EOT
   }
 
@@ -146,13 +148,18 @@ resource "azurerm_container_app_job" "access_review" {
         name  = "RECIPIENT_EMAIL"
         value = var.recipient_email
       }
+      # OPENAI_ENDPOINT and OPENAI_DEPLOYMENT are intentionally empty.
+      # The narrative module checks for these and falls back to a template
+      # summary when missing. Subscription-level OpenAI quota is 0 across all
+      # GA models in the available regions; rather than block the deploy, we
+      # use the graceful-fallback path the code was designed for.
       env {
         name  = "OPENAI_ENDPOINT"
-        value = azurerm_cognitive_account.openai.endpoint
+        value = ""
       }
       env {
         name  = "OPENAI_DEPLOYMENT"
-        value = azurerm_cognitive_deployment.gpt.name
+        value = ""
       }
       env {
         name  = "ACS_ENDPOINT"

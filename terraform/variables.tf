@@ -35,27 +35,11 @@ variable "schedule_cron" {
   default     = "0 8 1 * *"
 }
 
-# Azure OpenAI deployment name (this is the name we create on the OpenAI account;
-# the application code passes it as the "model" parameter).
-variable "openai_deployment_name" {
-  description = "Azure OpenAI deployment name"
-  type        = string
-  default     = "gpt-4-1-mini"
-}
-
-# Underlying OpenAI model. gpt-4.1-mini is GA and right-sized for summarization.
-# (gpt-4o-mini 2024-07-18 was deprecated 03/31/2026 in some regions.)
-variable "openai_model_name" {
-  description = "Underlying Azure OpenAI model"
-  type        = string
-  default     = "gpt-4.1-mini"
-}
-
-variable "openai_model_version" {
-  description = "Version of the underlying OpenAI model"
-  type        = string
-  default     = "2025-04-14"
-}
+# Note: OpenAI variables removed because Azure OpenAI deployment is omitted
+# from this stack (subscription has 0 OpenAI quota). Narrative falls back to
+# template summary. To re-enable OpenAI, restore the openai_* variables and
+# the openai.tf resource file, then set OPENAI_ENDPOINT/OPENAI_DEPLOYMENT
+# env vars on the Container App Job.
 
 # Used to prefix all resource names so they are identifiable in the Azure console.
 variable "name_prefix" {

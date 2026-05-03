@@ -27,16 +27,6 @@ output "report_container" {
   value       = azurerm_storage_container.reports.name
 }
 
-output "openai_endpoint" {
-  description = "Azure OpenAI service endpoint URL"
-  value       = azurerm_cognitive_account.openai.endpoint
-}
-
-output "openai_deployment" {
-  description = "Azure OpenAI deployment name"
-  value       = azurerm_cognitive_deployment.gpt.name
-}
-
 output "acs_endpoint" {
   description = "Azure Communication Services endpoint URL"
   value       = "https://${azurerm_communication_service.main.name}.communication.azure.com"

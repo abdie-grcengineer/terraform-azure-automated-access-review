@@ -14,6 +14,11 @@ from typing import List, Dict
 
 def generate_narrative(findings: List[Dict], endpoint: str, deployment: str) -> str:
     """Call Azure OpenAI and return the narrative summary."""
+    # Short-circuit when no endpoint is configured (deliberate: this stack
+    # ships without an OpenAI deployment when the subscription has 0 quota).
+    if not endpoint or not deployment:
+        logging.info("OpenAI endpoint not configured; using fallback summary.")
+        return _fallback_summary(findings)
     try:
         from openai import AzureOpenAI
         from azure.identity import DefaultAzureCredential, get_bearer_token_provider
