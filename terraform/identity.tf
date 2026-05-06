@@ -41,7 +41,18 @@ resource "azurerm_role_assignment" "job_storage_writer" {
   principal_id         = azurerm_user_assigned_identity.job.principal_id
 }
 
-# Note: OpenAI role assignment removed because Azure OpenAI deployment is
-# omitted from this stack (subscription has 0 OpenAI quota across all GA
-# models in the available regions). The function's narrative module gracefully
-# falls back to a template summary when no AI endpoint is configured.
+# Permission: invoke models deployed on the Foundry resource.
+#
+# "Cognitive Services OpenAI User" is the right role even though our model
+# (Phi-4-mini-instruct) is not an OpenAI model. The role grants the data-plane
+# action that the v1 OpenAI-compatible inference endpoint checks, regardless
+# of which model family is behind the deployment. Microsoft's own v1 API doc
+# explicitly calls out this role for Entra ID auth against Foundry.
+#
+# Scope: the Foundry resource itself, not the subscription. Least privilege.
+# Map: NIST 800-53 AC-6 (Least Privilege), CMMC AC.L2-3.1.5
+resource "azurerm_role_assignment" "job_foundry_user" {
+  scope                = azurerm_cognitive_account.foundry.id
+  role_definition_name = "Cognitive Services OpenAI User"
+  principal_id         = azurerm_user_assigned_identity.job.principal_id
+}

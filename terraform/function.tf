@@ -64,33 +64,22 @@ resource "azurerm_role_assignment" "job_acr_pull" {
   principal_id         = azurerm_user_assigned_identity.job.principal_id
 }
 
-# Build and push the container image to ACR using `az acr build`.
-# This runs locally on the machine running terraform (CI runner or your laptop).
-# az acr build sends the source to ACR and builds remotely; no local Docker required.
-# The triggers map ensures we only rebuild when source files change.
-resource "terraform_data" "image_build" {
-  triggers_replace = {
-    dockerfile = filemd5("${path.module}/../src/function/Dockerfile")
-    main_py    = filemd5("${path.module}/../src/function/main.py")
-    # Hash of all Python files in src/function: triggers a rebuild on any change.
-    src_hash = sha256(join("", [for f in fileset("${path.module}/../src/function", "**/*.py") : filemd5("${path.module}/../src/function/${f}")]))
-  }
-
-  provisioner "local-exec" {
-    # Run from the source dir so 'Dockerfile' resolves correctly without
-    # needing an absolute --file path.
-    working_dir = "${path.module}/../src/function"
-    command     = <<-EOT
-      az acr build \
-        --registry ${azurerm_container_registry.main.name} \
-        --image access-review:latest \
-        --image access-review:${substr(self.triggers_replace.src_hash, 0, 12)} \
-        .
-    EOT
-  }
-
-  depends_on = [azurerm_container_registry.main]
-}
+# Image build is decoupled from Terraform.
+#
+# Why decoupled: Terraform used to run `az acr build` via local-exec, which
+# requires ACR Tasks. ACR Tasks is gated at the subscription level on some
+# Azure tiers and was blocked on this sub. More importantly, building artifacts
+# inside Terraform conflates two concerns that production systems keep separate:
+# CI builds the artifact (the container image), CD applies the infrastructure.
+#
+# Where the image gets built now: GitHub Actions runs `az acr login` + docker
+# build + docker push as a step BEFORE `terraform apply`. The runner has Docker
+# preinstalled, no ACR Tasks dependency. See .github/workflows/terraform.yml.
+#
+# What Terraform expects: an image tagged `:latest` already present in ACR
+# at the time of apply. The Container App Job below references it directly.
+# If you're applying locally for development, push an image first via the same
+# pattern (az acr login + docker build + docker push) before running apply.
 
 # Container App Job: the scheduled access review.
 # trigger_type = "Schedule" makes this a recurring job on a cron schedule.
@@ -148,18 +137,35 @@ resource "azurerm_container_app_job" "access_review" {
         name  = "RECIPIENT_EMAIL"
         value = var.recipient_email
       }
-      # OPENAI_ENDPOINT and OPENAI_DEPLOYMENT are intentionally empty.
-      # The narrative module checks for these and falls back to a template
-      # summary when missing. Subscription-level OpenAI quota is 0 across all
-      # GA models in the available regions; rather than block the deploy, we
-      # use the graceful-fallback path the code was designed for.
+      # Foundry inference configuration.
+      #
+      # The narrative module in src/function/narrative.py reads these two
+      # env vars and uses them to call the v1 OpenAI-compatible chat
+      # completions endpoint on our Foundry resource. Two values are needed
+      # because Foundry separates "where to send the request" from "which
+      # model deployment should handle it":
+      #
+      # FOUNDRY_ENDPOINT
+      #   The hostname of the Foundry resource. Set in foundry.tf via the
+      #   local.foundry_endpoint expression. Format:
+      #     https://<custom-subdomain>.openai.azure.com
+      #   The function code appends "/openai/v1/" itself when constructing
+      #   the OpenAI client base URL.
+      #
+      # FOUNDRY_DEPLOYMENT
+      #   The name of the model deployment created on the Foundry resource.
+      #   This is what the function sends as the "model" field in the chat
+      #   completions request body. One Foundry resource can host multiple
+      #   deployments (different models, different versions, or the same
+      #   model with different content filter policies); the deployment name
+      #   selects which one handles the request.
       env {
-        name  = "OPENAI_ENDPOINT"
-        value = ""
+        name  = "FOUNDRY_ENDPOINT"
+        value = local.foundry_endpoint
       }
       env {
-        name  = "OPENAI_DEPLOYMENT"
-        value = ""
+        name  = "FOUNDRY_DEPLOYMENT"
+        value = azurerm_cognitive_deployment.phi.name
       }
       env {
         name  = "ACS_ENDPOINT"
@@ -183,6 +189,5 @@ resource "azurerm_container_app_job" "access_review" {
 
   depends_on = [
     azurerm_role_assignment.job_acr_pull,
-    terraform_data.image_build,
   ]
 }

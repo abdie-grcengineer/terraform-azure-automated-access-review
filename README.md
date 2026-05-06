@@ -2,7 +2,7 @@
 
 Continuous Azure security posture assessment with policy-as-code guardrails. Built natively on Microsoft Azure.
 
-The system runs on a schedule, pulls findings from native Azure security services, summarizes them with Azure OpenAI, archives a CSV in Blob Storage, and delivers the report by email via Azure Communication Services. Every infrastructure change is validated against NIST 800-53 / CMMC controls before it touches Azure.
+The system runs on a schedule, pulls findings from native Azure security services, summarizes them with a Microsoft-hosted Phi-4-mini-instruct model on Microsoft Foundry, archives a CSV in Blob Storage, and delivers the report by email via Azure Communication Services. Every infrastructure change is validated against NIST 800-53 / CMMC controls before it touches Azure.
 
 ## Why this is GRC engineering
 
@@ -24,20 +24,20 @@ The control IS the code. Infrastructure as code defines the system, policy as co
                 ┌────────────────────────────────┼────────────────────┐
                 │                                ▼                    │
    ┌─────────────────────┐               ┌────────────────────┐       │
-   │ Built-in Timer      │ NCRONTAB      │ Azure Function     │       │
+   │ Cron schedule       │ 5-field cron  │ Container App Job  │       │
    │ trigger             ├──────────────►│ (Python 3.11)      │       │
-   │ (monthly, no        │               │ Consumption plan   │       │
-   │  separate scheduler)│               │ System-assigned MI │       │
+   │ (monthly, built-in  │               │ User-assigned MI   │       │
+   │  to Container Apps) │               │ ACR-hosted image   │       │
    └─────────────────────┘               └────┬──┬─────┬──────┘       │
                                               │  │     │              │
                        ┌──────────────────────┘  │     └─────────┐    │
                        │                         │               │    │
                        ▼                         ▼               ▼    │
             ┌─────────────────────┐  ┌────────────────────┐  ┌─────────────────┐
-            │ Azure OpenAI        │  │ Blob Storage       │  │ Communication   │
-            │ GPT-4o-mini         │  │ (HTTPS only,       │  │ Services Email  │
-            │ (narrative summary) │  │ versioned, lifecycle)│ │ (Azure-managed  │
-            │                     │  │                    │  │  sender domain) │
+            │ Microsoft Foundry   │  │ Blob Storage       │  │ Communication   │
+            │ (kind=AIServices)   │  │ (HTTPS only, TLS   │  │ Services Email  │
+            │ Phi-4-mini-instruct │  │  1.2, versioned,   │  │ (Azure-managed  │
+            │ (Entra ID auth)     │  │  lifecycle policy) │  │  sender domain) │
             └─────────────────────┘  └────────────────────┘  └─────────────────┘
 ```
 
@@ -53,10 +53,10 @@ The control IS the code. Infrastructure as code defines the system, policy as co
 
 ```
 .
-├── terraform/                 IaC for Storage, Function App, OpenAI, ACS, Key Vault, RBAC
+├── terraform/                 IaC for Storage, Container Apps, Foundry + Phi, ACS, RBAC
 ├── policy/                    OPA/Rego policies enforcing NIST/CMMC controls
 ├── scripts/                   bootstrap and operational wrappers
-├── src/function/              Python Azure Functions implementation (v2 model)
+├── src/function/              Python Container App Job implementation (Dockerfile + Python 3.11)
 ├── docs/                      design decisions, lessons learned, study material
 └── .github/workflows/         CI: federated OIDC auth, fmt, tflint, plan, OPA gate, apply
 ```
@@ -70,9 +70,9 @@ The control IS the code. Infrastructure as code defines the system, policy as co
 | Policy as Code | OPA / Conftest with Rego v1 |
 | CI/CD | GitHub Actions |
 | Cloud auth (CI) | Federated identity credentials on Microsoft Entra ID app |
-| Compute | Azure Functions Consumption plan (Python 3.11, Linux) |
-| Scheduler | Built-in Timer trigger (NCRONTAB) |
-| AI summary | Azure OpenAI Service (GPT-4o-mini) |
+| Compute | Azure Container App Job (Python 3.11, Linux, scales to zero) |
+| Scheduler | Container Apps Job built-in cron trigger (5-field, no seconds) |
+| AI summary | Microsoft Foundry (`kind = "AIServices"`) hosting Phi-4-mini-instruct, Entra ID auth via the v1 OpenAI-compatible inference endpoint |
 | Storage | Blob Storage with HTTPS-only, TLS 1.2, versioning, lifecycle |
 | Email | Azure Communication Services Email (Azure-managed sender domain) |
 | Secret store | Azure Key Vault |
@@ -84,7 +84,7 @@ The control IS the code. Infrastructure as code defines the system, policy as co
 - `az` CLI authenticated (`az login`)
 - Terraform >= 1.10
 - [Conftest](https://www.conftest.dev/) (`brew install conftest`)
-- Azure OpenAI service available in your target region (us-east, us-east-2, etc.)
+- Microsoft Foundry / Phi-4-mini-instruct available in your target region (eastus2 by default; check `az cognitiveservices account list-models` after the Foundry resource is created)
 
 ## One-time bootstrap
 

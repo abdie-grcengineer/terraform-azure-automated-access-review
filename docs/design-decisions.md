@@ -6,23 +6,34 @@ Use this file as the source of truth for "why didn't you do X?" interview questi
 
 ---
 
-## AI service for narrative summary: Azure OpenAI GPT-4o-mini
+## AI service for narrative summary: Microsoft Foundry + Phi-4-mini-instruct
 
-**Picked:** Azure OpenAI Service with `gpt-4o-mini` deployment
+**Picked:** Microsoft Foundry (resource `kind = "AIServices"`) with a
+`Phi-4-mini-instruct` deployment, model format `Microsoft`, version `1`,
+SKU `GlobalStandard`, capacity 1.
 
 **Considered:**
-- GPT-4o (more capable, more expensive)
-- GPT-3.5-turbo (older, cheaper, lower quality)
-- Anthropic Claude via Azure (limited availability, requires special procurement)
 
-**Why GPT-4o-mini:**
-- Azure-native, no third-party model marketplace approval
-- Right-sized for summarization workload; the task is summarizing a CSV of findings into a paragraph
-- Significantly cheaper per token than GPT-4o; minimal quality loss for summarization
-- GPT-4o-mini is the default cheap-and-fast tier on Azure OpenAI
+| Option | Why we did not pick it |
+| --- | --- |
+| Azure OpenAI `gpt-4o-mini` | Subscription has zero OpenAI quota in every available region; quota tickets are unbounded in time |
+| Azure OpenAI `gpt-4.1-mini` | Same quota wall; this stack tried it through the migration history (commits a740e1c and 2900a61) |
+| Azure AI Foundry serverless Llama 3.1 8B | Marketplace subscription resource adds an `azapi` provider dependency. Meta-published model means a third-party provenance line in any future audit |
+| GitHub Models (free tier) | Microsoft positions it as evaluation-only: 50 req/day rate limit, no SLA, no data residency control, no in-tenant audit logs |
+| DeepSeek-V3 (Microsoft-direct) | Multiple US federal and state entities have explicitly restricted DeepSeek-origin models on official systems. Bad fit for a portfolio piece framed around government audiences |
+
+**Why Phi-4-mini-instruct on Foundry:**
+
+1. **Quota path.** Microsoft-direct Foundry models use a separate quota pool from Azure OpenAI. New subscriptions deploy this without filing a quota ticket.
+2. **Compliance posture.** Phi is Microsoft-trained, Microsoft-owned, Microsoft-hosted. Both the model and the hosting service live inside Azure AI Services' FedRAMP High authorization (Azure Commercial) and DoD IL5 authorization (Azure Government). There is no third-party model provenance to defend in a supply-chain audit.
+3. **Cost.** Roughly $1 per year at this workload (one summary per month, ~25K input tokens). Functionally free.
+4. **Architecture symmetry.** `kind = "AIServices"` is the unified Foundry resource. The same `cognitive_account` + `cognitive_deployment` pair works for OpenAI models, Phi, and most Microsoft-published models. Switching models is a three-line variable change.
+5. **Auth.** v1 Foundry inference endpoint is OpenAI-compatible. The standard `OpenAI` Python SDK works with a token provider for Entra ID auth. No API keys exist on the resource (`local_auth_enabled = false`).
 
 **Interview talking point:**
-"GPT-4o-mini is the right size for summarization. Using a larger model would be 5-10x the cost for marginal quality lift on a paragraph of findings. Right-sizing the model to the workload is a cost-and-performance discipline."
+"Phi-4-mini-instruct hosted within Azure AI Services. The model is Microsoft-trained and the hosting service holds FedRAMP High and DoD IL5 attestations, which means the model itself sits inside the same compliance perimeter as the hosting service. Selecting a Microsoft-published model removes third-party model provenance from the supply-chain audit. Llama and DeepSeek were both considered and explicitly rejected on provenance grounds."
+
+**Precision note:** services receive compliance authorization, not individual models. The defensible claim is "Phi-4-mini-instruct hosted within Azure AI Services, which holds FedRAMP High and DoD IL5 authorization," not "Phi-4-mini-instruct is FedRAMP High authorized." Confirm current status against the Microsoft Service Trust Portal before any writeup goes to a credibility-sensitive audience.
 
 ---
 

@@ -32,6 +32,16 @@ output "acs_endpoint" {
   value       = "https://${azurerm_communication_service.main.name}.communication.azure.com"
 }
 
+output "foundry_endpoint" {
+  description = "Microsoft Foundry resource endpoint (without /openai/v1 path). The job appends the v1 path itself."
+  value       = local.foundry_endpoint
+}
+
+output "foundry_deployment" {
+  description = "Name of the Phi-4-mini-instruct deployment on the Foundry resource"
+  value       = azurerm_cognitive_deployment.phi.name
+}
+
 output "acs_sender_address" {
   description = "Sender email address (Azure-managed domain)"
   value       = "donotreply@${azurerm_email_communication_service_domain.main.from_sender_domain}"

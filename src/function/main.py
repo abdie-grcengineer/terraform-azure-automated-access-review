@@ -34,15 +34,24 @@ logging.basicConfig(
 
 
 def main() -> int:
-    subscription_id   = os.environ["SUBSCRIPTION_ID"]
-    storage_account   = os.environ["REPORT_STORAGE_ACCOUNT"]
-    container         = os.environ["REPORT_CONTAINER"]
-    recipient         = os.environ["RECIPIENT_EMAIL"]
-    # OPENAI vars are optional. If empty, narrative falls back to template summary.
-    openai_endpoint   = os.environ.get("OPENAI_ENDPOINT", "")
-    openai_deployment = os.environ.get("OPENAI_DEPLOYMENT", "")
-    acs_endpoint      = os.environ["ACS_ENDPOINT"]
-    acs_sender        = os.environ["ACS_SENDER_ADDRESS"]
+    # Required env vars. These come from Terraform via the Container App Job's
+    # `env` block in terraform/function.tf. KeyError on a missing one is
+    # intentional: a misconfigured deploy should fail loudly rather than
+    # silently produce a degraded report.
+    subscription_id    = os.environ["SUBSCRIPTION_ID"]
+    storage_account    = os.environ["REPORT_STORAGE_ACCOUNT"]
+    container          = os.environ["REPORT_CONTAINER"]
+    recipient          = os.environ["RECIPIENT_EMAIL"]
+    acs_endpoint       = os.environ["ACS_ENDPOINT"]
+    acs_sender         = os.environ["ACS_SENDER_ADDRESS"]
+
+    # Foundry (Microsoft AI Services) inference target. Optional: if either
+    # value is missing the narrative module gracefully falls back to a
+    # deterministic template summary so the report email still ships. In
+    # production both values are always set by Terraform; the optional path
+    # exists for local development and tests.
+    foundry_endpoint   = os.environ.get("FOUNDRY_ENDPOINT", "")
+    foundry_deployment = os.environ.get("FOUNDRY_DEPLOYMENT", "")
 
     logging.info(f"Starting access review for subscription {subscription_id}")
 
@@ -59,7 +68,7 @@ def main() -> int:
     upload_report_to_blob(storage_account, container, blob_name, csv_buffer.getvalue())
     logging.info(f"Report uploaded to https://{storage_account}.blob.core.windows.net/{container}/{blob_name}")
 
-    narrative = generate_narrative(findings, openai_endpoint, openai_deployment)
+    narrative = generate_narrative(findings, foundry_endpoint, foundry_deployment)
     logging.info("Narrative generated")
 
     send_report_email(

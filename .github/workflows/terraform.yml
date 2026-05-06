@@ -45,6 +45,32 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # Build and push the container image to ACR.
+      #
+      # This step deliberately lives in CI (not in Terraform). Reasons:
+      # 1. Separation of concerns: CI builds artifacts, CD applies infra.
+      # 2. ACR Tasks (the remote-build feature `az acr build` uses) is gated
+      #    at the subscription level on some Azure tiers. Building locally on
+      #    the runner with Docker bypasses that gate entirely. Runners have
+      #    Docker preinstalled.
+      # 3. Image build is the slowest step. Letting Terraform retry on plan
+      #    drift would mean rebuilding on every CI run; this approach builds
+      #    only when source files change (the path filter on the workflow
+      #    triggers it only when src/function/ changes).
+      #
+      # Skipped on PRs: only build+push on push to main and manual dispatch.
+      # PRs run plan + policy gate without needing a fresh image.
+      - name: Build and push image
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          ACR_NAME: azureaccessreviewacrq2lmif
+          IMAGE: access-review
+        run: |
+          az acr login --name "$ACR_NAME"
+          docker build -t "$ACR_NAME.azurecr.io/$IMAGE:latest" -t "$ACR_NAME.azurecr.io/$IMAGE:${GITHUB_SHA:0:12}" src/function
+          docker push --all-tags "$ACR_NAME.azurecr.io/$IMAGE"
+        working-directory: ${{ github.workspace }}
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -108,8 +134,8 @@ jobs:
             terraform/tfplan.json
           retention-days: 30
 
-      - name: Apply (only on push to main, after gate passes)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Apply (push to main or manual dispatch, after gate passes)
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         env:
           ARM_USE_OIDC:           "true"
           ARM_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}

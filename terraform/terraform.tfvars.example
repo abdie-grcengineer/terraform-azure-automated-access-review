@@ -6,9 +6,15 @@ tenant_id       = "00000000-0000-0000-0000-000000000000"
 recipient_email = "you@example.com"
 
 # Optional overrides (defaults shown):
-# location               = "eastus"
-# schedule_ncrontab      = "0 0 8 1 * *"
-# openai_deployment_name = "gpt-4o-mini"
-# openai_model_name      = "gpt-4o-mini"
-# openai_model_version   = "2024-07-18"
-# name_prefix            = "azure-access-review"
+# location                 = "eastus2"
+# schedule_cron            = "0 8 1 * *"           # 5-field cron (no seconds)
+# name_prefix              = "azure-access-review"
+# report_retention_days    = 90
+
+# Foundry / Phi-4-mini-instruct overrides. The defaults match the canonical
+# Microsoft catalog values; only change these if you swap to a different
+# Microsoft-direct sold model. To browse alternatives:
+#   az cognitiveservices account list-models -n <foundry-name> -g <rg>
+# foundry_deployment_name = "Phi-4-mini-instruct"
+# foundry_model_name      = "Phi-4-mini-instruct"
+# foundry_model_version   = "1"

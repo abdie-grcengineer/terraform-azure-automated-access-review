@@ -185,4 +185,57 @@ init fails with `Error building ARM Config: a Tenant ID must be configured`.
 
 ---
 
+## 18. Foundry v1 inference uses a different audience than Azure OpenAI
+
+The dropped Azure OpenAI code used token audience `https://cognitiveservices.azure.com/.default`.
+The v1 Foundry inference endpoint uses `https://ai.azure.com/.default`.
+Wrong audience produces a 401 with a confusing message; the symptom looks
+like an RBAC problem but it is actually an audience problem.
+
+**Fix:**
+- For Foundry v1 inference, always use audience `https://ai.azure.com/.default`.
+- Reserve `https://cognitiveservices.azure.com/.default` for the older Azure
+  OpenAI endpoint shape (which we no longer use).
+
+---
+
+## 19. v1 Foundry endpoint accepts the standard OpenAI client (not AzureOpenAI)
+
+The v1 Foundry inference API is OpenAI-compatible. The standard `OpenAI()`
+Python client points at the Foundry endpoint with `base_url` set to
+`https://<resource>.openai.azure.com/openai/v1/` (or the equivalent
+`services.ai.azure.com` form). The older `AzureOpenAI()` client is no
+longer needed for this code path. The `azure-ai-inference` SDK is also
+unnecessary and was deprecated in 2026.
+
+**Fix:**
+- Use `from openai import OpenAI` (not `AzureOpenAI`).
+- Pass a token provider callable as `api_key`: the SDK refreshes tokens automatically.
+- `model` parameter on chat completions is the deployment name, not the underlying model name.
+
+---
+
+## 20. ACR Tasks can be subscription-gated; `az acr build` may return TasksOperationsNotAllowed
+
+Some Azure subscription types (free trial, certain pay-as-you-go tiers, sandbox)
+have ACR Tasks disabled at the subscription level even when the registry
+itself supports Tasks (Basic/Standard/Premium SKUs). The error looks like:
+
+  ERROR: (TasksOperationsNotAllowed) ACR Tasks requests for the registry
+  <registry> and <subscription> are not permitted. Please file an Azure
+  support request at http://aka.ms/azuresupport for assistance.
+
+Upgrading the registry SKU does not fix this; it is a sub-level feature gate.
+
+**Fix (and the right architecture anyway):**
+- Move image build out of Terraform's local-exec into CI.
+- The CI runner builds with Docker (`az acr login` + `docker build` + `docker push`)
+  and the runner has Docker preinstalled, so no ACR Tasks dependency.
+- Terraform then only references the pre-existing `:latest` image. Cleaner
+  separation of CI (artifact build) from CD (infra apply).
+- Bonus: this is the production pattern. Decoupling artifact build from infra
+  apply means a Terraform replan never accidentally rebuilds the image.
+
+---
+
 (Append new lessons here as they come up.)
