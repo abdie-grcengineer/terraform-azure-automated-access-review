@@ -1,14 +1,28 @@
 # Azure Automated Access Review
 
-Continuous Azure security posture assessment with policy-as-code guardrails. Built natively on Microsoft Azure.
+Continuous Azure security posture assessment with policy-as-code guardrails. Built for GRC teams who need audit-ready evidence without standing up a SIEM or spending weeks on a custom pipeline.
 
-The system runs on a schedule, pulls findings from native Azure security services, summarizes them with a Microsoft-hosted Phi-4-mini-instruct model on Microsoft Foundry, archives a CSV in Blob Storage, and delivers the report by email via Azure Communication Services. Every infrastructure change is validated against NIST 800-53 / CMMC controls before it touches Azure.
+The system runs on a schedule, pulls findings from native Azure security services, summarizes them with a Microsoft-hosted Phi-4-mini-instruct model on Microsoft Foundry, archives a CSV in Blob Storage, and delivers the report by email via Azure Communication Services. Every infrastructure change is validated against NIST 800-53 / CMMC controls before deploy. Misconfigurations get blocked at the IaC layer, not at the next quarterly audit.
 
 ## Why this is GRC engineering
 
-The control IS the code. Infrastructure as code defines the system, policy as code enforces the rules, CI runs the gate on every change. Compliance ships in the same pipeline as the system.
+Traditional GRC programs document controls in Word, evidence them with screenshots, and audit them quarterly. By that point, drift has already happened.
+
+GRC Engineering inverts the model: **the control is the code.** Infrastructure-as-code defines the system, policy-as-code enforces the rules, and CI runs the gate on every change. There is no separate "compliance team" reviewing things after the fact. Compliance is implemented in the same pipeline that ships the system.
+
+This project is a working demonstration of that model:
+
+- **Infrastructure as Code (Terraform):** every Azure resource is declared in version-controlled files. State is reproducible. There is no "click-ops" step that bypasses review. Maps to NIST 800-53 **CM-2 (Baseline Configuration)** and **CM-3 (Configuration Change Control)**.
+- **Policy as Code (OPA / Rego):** security controls are encoded as rules that run before deploy. A misconfiguration cannot reach Azure because the gate fails the build first. Maps to **AC-3, AC-6, SC-7, SC-28** depending on which policy fires.
+- **Audit Evidence by Construction:** every Terraform plan is archived. Every CI run is logged. Every Container App Job execution is recorded in Log Analytics and the Azure Activity Log. The auditor's question "show me what changed and when" has a one-command answer. Maps to **AU-2 (Audit Events)** and **AU-12 (Audit Generation)**.
+- **Federated Authentication (OIDC):** CI authenticates to Azure via federated identity credentials on a Microsoft Entra ID app, exchanging short-lived OIDC tokens for short-lived access tokens. No long-lived credentials in any system. Maps to **IA-2(8) (Replay-Resistant Authentication)** and **IA-5 (Authenticator Management)**.
+- **Least Privilege at Every Layer:** the Container App Job's managed identity is scoped to the actions it actually needs (subscription Reader, Security Reader, Monitoring Reader, Storage Blob Data Contributor on one account, Cognitive Services OpenAI User on the Foundry resource, Contributor on the ACS resource). The CI principal is scoped to the resources it manages. Both are continuously enforced by the OPA `rbac_no_owner` policy. Maps to **AC-6 (Least Privilege)**.
+
+Translated to CMMC: **AC.L2-3.1.3, AC.L2-3.1.5, AU.L2-3.3.1, CM.L2-3.4.2, IA.L2-3.5.3, SC.L2-3.13.16**.
 
 ## Architecture
+
+The system is **fully serverless**. There are no virtual machines, no containers to patch on a schedule, no scheduling daemons to monitor. Every component is event-driven and scales to zero between executions.
 
 ```
                                   ┌─────────────────────────────────────────┐
@@ -41,42 +55,97 @@ The control IS the code. Infrastructure as code defines the system, policy as co
             └─────────────────────┘  └────────────────────┘  └─────────────────┘
 ```
 
+**Why serverless matters for GRC:**
+
+- **No infrastructure to harden, patch, or attest.** The auditor scope shrinks from "how do you secure your servers?" to "what does the job do, and what can it access?" Both questions are answered by reading [terraform/identity.tf](terraform/identity.tf) and [src/function/main.py](src/function/main.py).
+- **No persistent compute means no persistent attack surface.** The Container App Job replica exists for the duration of one report, then disappears.
+- **Scales to zero.** Running a monthly access review costs roughly $2 to $5 per year, all in. There is no idle infrastructure burning budget.
+- **Native Azure integration.** The schedule is built into Container Apps Jobs, no separate scheduler resource. The job calls Foundry, Blob Storage, and ACS via SDK clients that authenticate with the user-assigned managed identity. No glue code, no API gateways.
+- **Activity Log captures everything.** Every Container App Job execution, every Foundry inference call, every Blob PUT, all logged automatically into Log Analytics and Activity Log. Audit evidence is generated by Azure, not by the application.
+
+## How it works
+
+A scheduled cron trigger built into the Container App Job invokes a Python container every 30 days (configurable). The job inspects native Azure security services for findings, generates a plain-English executive summary via a Microsoft-direct Phi-4-mini-instruct deployment on Microsoft Foundry, writes a timestamped CSV report to Blob Storage with a 90-day retention lifecycle, and emails the report via Azure Communication Services using Entra ID authentication.
+
+## Tech stack
+
+| Layer | Choice | Why |
+| --- | --- | --- |
+| Infrastructure as Code | **Terraform** (>= 1.10) with `hashicorp/azurerm` v4 | Declarative, version-controlled, reproducible state |
+| State management | **Azure Storage backend** with `use_azuread_auth = true` | Encrypted, versioned, blob-lease locking, no separate lock table |
+| Policy as Code | **OPA / Conftest** with Rego v1 | Industry standard (CNCF graduated); rules are testable and version-controlled |
+| CI/CD | **GitHub Actions** | Native PR integration, OIDC support, free for public repos |
+| Cloud auth (CI) | **Federated identity credentials** on a Microsoft Entra ID app | Short-lived tokens, no long-lived credentials in GitHub Secrets |
+| Compute | **Azure Container App Job** (Python 3.11, Linux) | Serverless, scales to zero, scheduled trigger built in |
+| Scheduler | **Container Apps Job** built-in cron trigger (5-field) | Native, no separate scheduler resource |
+| AI summary | **Microsoft Foundry** (`kind = "AIServices"`) hosting Phi-4-mini-instruct | Microsoft-trained model on a service with FedRAMP High + DoD IL5 attestations; bypasses Azure OpenAI quota gating |
+| Container registry | **Azure Container Registry** Basic | Cheapest tier sufficient for a single-image low-volume job |
+| Storage | **Azure Blob Storage** with HTTPS only, TLS 1.2, versioning, 90-day lifecycle | Encrypted at rest, audit-evidence-ready |
+| Email delivery | **Azure Communication Services Email** with Azure-managed sender domain | Native, Entra ID-authenticated, no DNS verification step |
+| Identity for runtime | **User-assigned managed identity** on the Container App Job | Deterministic identity for RBAC bindings; predates job creation |
+| Identity providers for findings | **Azure RBAC, Defender for Cloud, Activity Log, Resource Graph, Entra ID** | Native Azure sources, no third-party scanners |
+
 ## Compliance controls enforced
 
-| Policy | NIST 800-53 / CMMC mapping |
+Three OPA policies are evaluated against every Terraform plan. If any policy fails, the deploy is blocked.
+
+| Policy | Control mapping |
 | --- | --- |
-| `policy/rbac_no_owner.rego` | AC-6 Least Privilege / CMMC AC.L2-3.1.5 |
-| `policy/storage_secure.rego` | AC-3 Access Enforcement, SC-7 Boundary Protection / CMMC AC.L2-3.1.3 |
-| `policy/storage_encryption.rego` | SC-28 Protection at Rest / CMMC SC.L2-3.13.16 |
+| [`policy/rbac_no_owner.rego`](policy/rbac_no_owner.rego) | NIST 800-53 AC-6 • CMMC AC.L2-3.1.5 |
+| [`policy/storage_secure.rego`](policy/storage_secure.rego) | NIST 800-53 AC-3, SC-7 • CMMC AC.L2-3.1.3 |
+| [`policy/storage_encryption.rego`](policy/storage_encryption.rego) | NIST 800-53 SC-28 • CMMC SC.L2-3.13.16 |
+
+The control documentation is the policy file. Each rule lives at `policy/*.rego` with a header comment naming the control it satisfies. New policies are added as `.rego` files under `policy/` and picked up automatically by the deploy gate.
+
+## Architecture decisions
+
+**Azure Storage remote backend with native locking.** State lives in an encrypted, versioned Blob container with `use_azuread_auth = true` and blob-lease locking (built into Azure Storage). No separate lock table required. State is sensitive and gets the same protection as audit evidence.
+
+**Image build decoupled from infrastructure apply.** The container image is built and pushed to ACR by GitHub Actions before `terraform apply`. Terraform only references the pre-built image. This is the production pattern: CI builds artifacts, CD applies infrastructure, neither knows about the other. It also sidesteps ACR Tasks subscription gating that affects some Azure tiers (see [docs/lessons-learned.md](docs/lessons-learned.md) item 20).
+
+**Federated identity credentials for CI authentication.** GitHub Actions presents an OIDC token; an Entra ID app exchanges it for a short-lived access token. The federated credential `subject` claim restricts to a specific repo and ref. No long-lived Azure credentials are stored in GitHub Secrets. Maps to NIST 800-53 IA-2(8).
+
+**User-assigned managed identity for the job.** The job uses a user-assigned MI rather than system-assigned so the identity exists before the job resource. RBAC role assignments target the MI directly, which makes apply ordering deterministic and avoids race conditions on first deploy.
+
+**Microsoft-direct Foundry model selection.** Phi-4-mini-instruct is Microsoft-trained, Microsoft-owned, and Microsoft-hosted, sitting inside Azure AI Services' FedRAMP High and DoD IL5 attestations. Selecting a Microsoft-published model removes third-party model provenance from any future supply-chain audit. Llama (no FedRAMP inheritance) and DeepSeek (federal restrictions) were considered and rejected on these grounds.
 
 ## Repository layout
 
 ```
 .
-├── terraform/                 IaC for Storage, Container Apps, Foundry + Phi, ACS, RBAC
-├── policy/                    OPA/Rego policies enforcing NIST/CMMC controls
-├── scripts/                   bootstrap and operational wrappers
-├── src/function/              Python Container App Job implementation (Dockerfile + Python 3.11)
-├── docs/                      design decisions, lessons learned, study material
-└── .github/workflows/         CI: federated OIDC auth, fmt, tflint, plan, OPA gate, apply
+├── terraform/                    IaC for Storage, Container Apps, Foundry, ACS, RBAC
+│   ├── main.tf                   Provider, Azure Storage backend, subscription lookup
+│   ├── variables.tf              Inputs (subscription, tenant, email, schedule, model)
+│   ├── storage.tf                Report Blob account + lifecycle + versioning
+│   ├── identity.tf               Job MI + per-resource RBAC role assignments
+│   ├── function.tf               ACR + Container App environment + Container App Job
+│   ├── foundry.tf                Foundry resource + Phi-4-mini-instruct deployment
+│   ├── communication.tf          ACS resource + email service + sender domain
+│   └── outputs.tf                Outputs for downstream automation
+├── policy/                       OPA/Rego policies (NIST/CMMC controls)
+│   ├── rbac_no_owner.rego        AC-6 Least Privilege
+│   ├── storage_secure.rego       AC-3, SC-7 (HTTPS, TLS, public access)
+│   └── storage_encryption.rego   SC-28 (versioning enforced)
+├── scripts/
+│   ├── bootstrap_azure.sh        One-time: state RG/SA, Entra ID app, federated creds
+│   ├── tf_deploy.sh              Plan, policy gate, apply
+│   ├── tf_run_report.sh          Manually start the Container App Job
+│   └── run_local.py              Local dev: run the function code outside Container Apps
+├── src/function/                 Python Container App Job source
+│   ├── Dockerfile                Python 3.11 base image
+│   ├── main.py                   Entry point
+│   ├── findings/                 RBAC, Defender, Activity Log collectors
+│   ├── narrative.py              Foundry inference via v1 OpenAI-compatible client
+│   ├── reporting.py              CSV builder
+│   ├── storage_writer.py         Blob upload
+│   ├── email_sender.py           ACS Email send via managed identity
+│   └── requirements.txt          Python dependencies
+├── docs/
+│   ├── design-decisions.md       Architectural choices, considered alternatives, tradeoffs
+│   └── lessons-learned.md        Gotchas hit during the build with fix patterns
+└── .github/workflows/
+    └── terraform.yml             CI: build/push image, fmt, tflint, plan, OPA gate, apply
 ```
-
-## Tech stack
-
-| Layer | Choice |
-| --- | --- |
-| Infrastructure as Code | Terraform >= 1.10 with `hashicorp/azurerm` provider |
-| State management | Azure Storage backend with blob versioning + lease-based locking |
-| Policy as Code | OPA / Conftest with Rego v1 |
-| CI/CD | GitHub Actions |
-| Cloud auth (CI) | Federated identity credentials on Microsoft Entra ID app |
-| Compute | Azure Container App Job (Python 3.11, Linux, scales to zero) |
-| Scheduler | Container Apps Job built-in cron trigger (5-field, no seconds) |
-| AI summary | Microsoft Foundry (`kind = "AIServices"`) hosting Phi-4-mini-instruct, Entra ID auth via the v1 OpenAI-compatible inference endpoint |
-| Storage | Blob Storage with HTTPS-only, TLS 1.2, versioning, lifecycle |
-| Email | Azure Communication Services Email (Azure-managed sender domain) |
-| Secret store | Azure Key Vault |
-| Identity for runtime | System-assigned managed identity on the Function App |
 
 ## Prerequisites
 
@@ -84,16 +153,19 @@ The control IS the code. Infrastructure as code defines the system, policy as co
 - `az` CLI authenticated (`az login`)
 - Terraform >= 1.10
 - [Conftest](https://www.conftest.dev/) (`brew install conftest`)
-- Microsoft Foundry / Phi-4-mini-instruct available in your target region (eastus2 by default; check `az cognitiveservices account list-models` after the Foundry resource is created)
+- A region where Microsoft Foundry hosts Phi-4-mini-instruct (eastus2 by default)
+- For the local apply path: `Storage Blob Data Owner` on the Terraform state storage account (control-plane Owner is not enough; see [docs/lessons-learned.md](docs/lessons-learned.md) item 16)
 
 ## One-time bootstrap
 
-The `scripts/bootstrap_azure.sh` script provisions:
-- A resource group for Terraform state
-- A storage account + blob container for Terraform state (versioned, HTTPS only)
+The [scripts/bootstrap_azure.sh](scripts/bootstrap_azure.sh) script provisions:
+
+- A resource group for Terraform state (`rg-tf-state`)
+- A storage account + Blob container for Terraform state (versioned, HTTPS only)
 - An Entra ID app registration + service principal for GitHub Actions
-- Federated identity credentials for the GitHub repo
-- Contributor + User Access Administrator role assignments at subscription scope
+- Federated identity credentials for the GitHub repo (subject scoped to `repo:<owner>/<repo>:ref:refs/heads/main`)
+- Contributor + User Access Administrator role assignments at subscription scope for the SP
+- Storage Blob Data Owner on the state storage account for the SP
 
 Idempotent: running on an account that already has these resources is a no-op.
 
@@ -112,23 +184,45 @@ terraform init
 cd ..
 ./scripts/tf_deploy.sh
 
-# 4. Trigger an immediate report (HTTP-trigger entry point)
+# 4. Trigger an immediate report run
 ./scripts/tf_run_report.sh
+# or directly:
+# az containerapp job start --name azure-access-review-job --resource-group rg-azure-access-review
 ```
+
+The first invocation generates a CSV in the report Blob container and emails the recipient within ~10 minutes (most of that is findings collection across Azure APIs).
 
 ## CI/CD
 
-The GitHub Actions workflow at `.github/workflows/terraform.yml` runs on every PR and every push to `main`:
+The GitHub Actions workflow at [.github/workflows/terraform.yml](.github/workflows/terraform.yml) runs on every pull request and every push to `main`:
 
 1. Checkout
 2. Authenticate to Azure via federated identity credentials (no stored credentials)
-3. `terraform fmt -check`
-4. `tflint`
-5. `terraform plan -input=false`
-6. Conftest evaluates all policies under `policy/`
-7. Plan artifact uploaded for audit retention
-8. Apply, only on push to main, only if all gates pass
+3. Build and push the container image to ACR (only on push to main and manual dispatch)
+4. `terraform fmt -check`
+5. `tflint`
+6. `terraform plan -input=false`
+7. Conftest evaluates all policies under `policy/`
+8. Plan artifact uploaded for audit retention
+9. Apply, only on push to `main` or manual dispatch, only if all gates pass
+
+A failing policy fails the workflow before apply runs. PRs cannot be merged with a red check unless branch protection rules are bypassed.
+
+## Cost
+
+Approximately $2 to $5 per year all-in:
+
+| Component | Approx. annual cost |
+| --- | --- |
+| Phi-4-mini-instruct inference (12 runs/year, ~25K tokens each) | ~$0.10 |
+| Container App Job execution (12 runs/year, ~10 min each, scales to zero) | ~$0.10 |
+| Azure Container Registry (Basic SKU, single image) | ~$5 |
+| Blob Storage (reports + state, LRS, well under 1 GB) | ~$0.30 |
+| Log Analytics (job logs, low volume) | ~$0.50 |
+| ACS Email (12 messages/year) | ~$0.01 |
+
+Total is dominated by ACR Basic. Foundry inference is rounding-error.
 
 ## License
 
-MIT
+MIT.

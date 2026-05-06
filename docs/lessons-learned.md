@@ -238,4 +238,25 @@ Upgrading the registry SKU does not fix this; it is a sub-level feature gate.
 
 ---
 
+## 21. ACS Email via managed identity needs an explicit RBAC role on the ACS resource
+
+ACS Email supports two auth modes: connection string (key-based) and Entra ID
+(managed identity). When using managed identity, the principal needs an RBAC
+role on the ACS resource that grants the data-plane email send action.
+Without it, `email_client.begin_send()` returns:
+
+  azure.core.exceptions.ClientAuthenticationError: (Denied) Denied by
+  the resource provider.
+
+The error is at the ACS resource provider, not at AAD. It looks like a token
+problem but it is actually an RBAC problem.
+
+**Fix:**
+- Grant the calling principal `Contributor` scoped to the ACS resource
+  (least privilege; sub-scope Contributor would also work but is over-broad).
+- The role is in `terraform/identity.tf` as `azurerm_role_assignment.job_acs_contributor`.
+- Wait ~30 seconds for RBAC propagation before retesting.
+
+---
+
 (Append new lessons here as they come up.)
