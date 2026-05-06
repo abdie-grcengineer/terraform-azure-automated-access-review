@@ -41,6 +41,23 @@ resource "azurerm_role_assignment" "job_storage_writer" {
   principal_id         = azurerm_user_assigned_identity.job.principal_id
 }
 
+# Permission: send email via Azure Communication Services.
+#
+# ACS Email supports two auth modes: connection string (key-based) and
+# Entra ID (managed identity). We use Entra ID, which means the calling
+# principal needs an RBAC role on the ACS resource that grants the email
+# send data-plane action. The simplest built-in role that includes that
+# action is "Contributor" scoped to the ACS resource itself.
+#
+# Why this scope: least privilege. Contributor at subscription scope would
+# work but is over-broad. Contributor on just the ACS resource limits the
+# permission to email send + ACS resource read on this one resource.
+resource "azurerm_role_assignment" "job_acs_contributor" {
+  scope                = azurerm_communication_service.main.id
+  role_definition_name = "Contributor"
+  principal_id         = azurerm_user_assigned_identity.job.principal_id
+}
+
 # Permission: invoke models deployed on the Foundry resource.
 #
 # "Cognitive Services OpenAI User" is the right role even though our model
