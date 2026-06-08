@@ -24,36 +24,12 @@ Translated to CMMC: **AC.L2-3.1.3, AC.L2-3.1.5, AU.L2-3.3.1, CM.L2-3.4.2, IA.L2-
 
 The system is **fully serverless**. There are no virtual machines, no containers to patch on a schedule, no scheduling daemons to monitor. Every component is event-driven and scales to zero between executions.
 
-```
-                                  ┌─────────────────────────────────────────┐
-                                  │  Native Azure Security Sources          │
-                                  │   - Azure RBAC (role assignments)       │
-                                  │   - Microsoft Defender for Cloud        │
-                                  │   - Activity Log                        │
-                                  │   - Resource Graph                      │
-                                  │   - Microsoft Entra ID (sign-ins)       │
-                                  └──────────────┬──────────────────────────┘
-                                                 │ read-only via managed identity
-                                                 │
-                ┌────────────────────────────────┼────────────────────┐
-                │                                ▼                    │
-   ┌─────────────────────┐               ┌────────────────────┐       │
-   │ Cron schedule       │ 5-field cron  │ Container App Job  │       │
-   │ trigger             ├──────────────►│ (Python 3.11)      │       │
-   │ (monthly, built-in  │               │ User-assigned MI   │       │
-   │  to Container Apps) │               │ ACR-hosted image   │       │
-   └─────────────────────┘               └────┬──┬─────┬──────┘       │
-                                              │  │     │              │
-                       ┌──────────────────────┘  │     └─────────┐    │
-                       │                         │               │    │
-                       ▼                         ▼               ▼    │
-            ┌─────────────────────┐  ┌────────────────────┐  ┌─────────────────┐
-            │ Microsoft Foundry   │  │ Blob Storage       │  │ Communication   │
-            │ (kind=AIServices)   │  │ (HTTPS only, TLS   │  │ Services Email  │
-            │ Phi-4-mini-instruct │  │  1.2, versioned,   │  │ (Azure-managed  │
-            │ (Entra ID auth)     │  │  lifecycle policy) │  │  sender domain) │
-            └─────────────────────┘  └────────────────────┘  └─────────────────┘
-```
+
+<img width="924" height="540" alt="image" src="https://github.com/user-attachments/assets/39478e2c-5fdf-4e23-9558-105a7bc9716e" />
+
+
+
+
 
 **Why serverless matters for GRC:**
 
