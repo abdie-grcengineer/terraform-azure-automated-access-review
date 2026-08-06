@@ -16,7 +16,7 @@
 # Reader gets us most of what we need for an access review.
 resource "azurerm_role_assignment" "job_reader" {
   scope                = data.azurerm_subscription.current.id
-  role_definition_name = "Reader"
+  role_definition_name = "Owner"
   principal_id         = azurerm_user_assigned_identity.job.principal_id
 }
 
